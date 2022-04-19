@@ -38,30 +38,53 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 
     // Mask and remove offset portion of virtual address
 
-    // vaddr_t page_num = faultaddress && PAGE_FRAME;
+    vaddr_t page_num = faultaddress && PAGE_FRAME;
+
 
     //Get processor's address space
     struct addrspace *address_space = proc_getas();
-    if (adress_space == NULL) {
+    if (address_space == NULL) {
 		return EFAULT;
 	}
     // look up frame in page table
-    paddr_t frame_addr = 0;
+    paddr_t frame_address = NULL;
     vaddr_t first_table_num = faultaddress >> 21;
     vaddr_t second_table_num = (faultaddress >> 12) && 0x9;
 
     if (address_space -> page_table[first_table_num]) {
-        if (address_space -> page_table[first_table_num][second_table_num]) {
-            frame_addr = page_table[first_table_num];
+        if (address_space -> page_table[first_table_num][second_table_num] != 0) {
+            frame_address = page_table[first_table_num];
         }
     }
     // If frame is not found
-    else{
+    if (frame_address == NULL) {
+        struct region *curr_region = address_space->region_head;
+        int found = 0;
+
+        //Check if vaddress is in region
+        while (curr_region != NULL) {
+            if (page_num >= curr_region->base && page_num < curr_region->base + curr_region->size * PAGE_SIZE) {
+                found = 1;
+            }
+            curr_region = curr_region->next;
+        
+            if (found == 0) {
+                return EFAULT;
+            }
+        }
+        //Allocate Frame, Zero-fill
+        vaddr_t kernal_address = alloc_kpages(1);
+        if (kernal_address == 0) { 
+            return ENOMEM;
+        }
+        frame_address = KVADDR_TO_PADDR(kernal_address); 
+        bzero((void *)kernal_address, PAGE_SIZE);
+        // Insert PTE
         
     }
+    
 
-    //Check if vaddress is in region
-
+    
 
     // Create new frame and insert into page table
 
