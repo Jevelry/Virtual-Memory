@@ -53,7 +53,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 
     if (address_space -> page_table[first_table_num]) {
         if (address_space -> page_table[first_table_num][second_table_num] != 0) {
-            frame_address = page_table[first_table_num];
+            frame_address = address_space -> page_table[first_table_num];
         }
     }
     // If frame is not found
@@ -108,7 +108,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
     //ignore global bit and not caechable bit
     tlb_random(entry_hi, entry_lo);
     splx(spl);
-    
+
     return 0;
 }
 
