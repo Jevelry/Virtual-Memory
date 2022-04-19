@@ -68,7 +68,7 @@ as_create(void)
 	as->page_table = kmalloc(sizeof(paddr_t *) * PT_FL_SIZE);
 
 	if (as->page_table == NULL) {
-		return ENOMEM;
+		panic("page table not initialised");
 	}
 
 	for (int counter = 0; counter < PT_FL_SIZE; counter++) {
@@ -106,15 +106,15 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 		newas_region = new;
 		newas_region = newas_region->next;
 		oldas_region = oldas_region->next;
-		}
 	}
+	
 
 	//copy page table
 	paddr_t **new_pt = newas->page_table;
-	paddr_t **old_pt = old->page_table
+	paddr_t **old_pt = old->page_table;
 
 	if (old_pt == NULL || new_pt == NULL) {
-		panic("page tables are not initialised");
+		return EFAULT;
 	}
 
 	//traverse first level
@@ -158,7 +158,7 @@ as_destroy(struct addrspace *as)
 	 */
 
 	if (as == NULL) {
-		return EFAULT;
+		panic("bad memory reference");
 	}
 
 	if (as->region_head != NULL) {
@@ -309,7 +309,7 @@ int
 as_define_stack(struct addrspace *as, vaddr_t *stackptr)
 {
 
-	int size = STACK_SIZE * PAGE_SIZE;
+	int size = FIXED_STACK_SIZE * PAGE_SIZE;
 	vaddr_t stack = USERSTACK - size;
 
 	int errno = as_define_region(as, stack, size, 1, 1, 0);

@@ -45,7 +45,7 @@ struct region {
         size_t size;
         int flags;
         struct region *next;
-}
+};
 
 
 /*
@@ -74,7 +74,7 @@ struct addrspace {
 
 #define PT_FL_SIZE 2048
 #define PT_SL_SIZE 512
-#define STACK_SIZE 16
+#define FIXED_STACK_SIZE 16
 
 #define FLAG_L 0x8      /* Region is loading */
 #define	FLAG_R 0x4	/* Region is readable */
