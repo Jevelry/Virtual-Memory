@@ -1,6 +1,8 @@
 #include <types.h>
+#include <proc.h>
 #include <kern/errno.h>
 #include <lib.h>
+#include <spl.h>
 #include <thread.h>
 #include <addrspace.h>
 #include <vm.h>
@@ -25,7 +27,6 @@ vm_fault(int faulttype, vaddr_t faultaddress)
     (void) faulttype;
     (void) faultaddress;
 
-    panic("vm_fault hasn't been written yet\n");
 
     // For Null
     if (faultaddress == 0){
@@ -47,18 +48,26 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 		return EFAULT;
 	}
     // look up frame in page table
-    paddr_t frame_address = NULL;
+    paddr_t frame_address = 0;
     vaddr_t first_table_num = faultaddress >> 21;
     vaddr_t second_table_num = (faultaddress >> 12) & 0x9; //mask for 9 bits
-
+    struct region *curr_region = address_space->region_head;
     if (address_space -> page_table[first_table_num]) {
         if (address_space -> page_table[first_table_num][second_table_num] != 0) {
-            frame_address = address_space -> page_table[first_table_num];
+            frame_address = address_space -> page_table[first_table_num][second_table_num];
+            //get address region for later
+
+            while (curr_region != NULL) {
+                if (page_num >= curr_region->base && page_num < curr_region->base + curr_region->size * PAGE_SIZE) {
+                    break;
+                }
+                curr_region = curr_region->next;   
+            }
         }
     }
     // If frame is not found
-    if (frame_address == NULL) {
-        struct region *curr_region = address_space->region_head;
+    if (frame_address == 0) {
+        // struct region *curr_region = address_space->region_head;
         int found = 0;
 
         //Check if vaddress is in region
@@ -89,7 +98,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
             }
             int i = 0;
             while (i < PT_SL_SIZE) {
-                address_space->page_table[first_table_num][i] = NULL;
+                address_space->page_table[first_table_num][i] = 0;
                 i++;
             }
             address_space->page_table[first_table_num][second_table_num] = frame_address;
@@ -99,10 +108,10 @@ vm_fault(int faulttype, vaddr_t faultaddress)
     // LOAD into TLB
     int spl = splhigh();
     uint32_t entry_hi = page_num;
-    uint32_t entry_lo;
+    uint32_t entry_lo = frame_address;
     // check region write permission
     if (curr_region->flags & FLAG_W) {
-        entry_lo = frame_address | TLBLO_DIRTY;
+        entry_lo |= TLBLO_DIRTY;
     }
     entry_lo |= TLBLO_VALID;
     //ignore global bit and not caechable bit
