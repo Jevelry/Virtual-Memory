@@ -61,6 +61,19 @@ as_create(void)
 	/*
 	 * Initialize as needed.
 	 */
+	as->stack = USERSTACK;
+
+	as->region_head = NULL;
+
+	as->page_table = kmalloc(sizeof(paddr_t *) * PT_FL_SIZE);
+
+	if (as->page_table == NULL) {
+		return ENOMEM;
+	}
+
+	for (int counter = 0; counter < PT_FL_SIZE; counter++) {
+		as->page_table[counter] = NULL;
+	}
 
 	return as;
 }
@@ -75,11 +88,63 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 		return ENOMEM;
 	}
 
-	/*
-	 * Write this.
-	 */
+	struct region *newas_region = newas->region_head;
+	struct region *oldas_region = old->region_head;
 
-	(void)old;
+	//copy region linked list
+	while (oldas_region != NULL) {
+		struct region *new = kmalloc(sizeof(struct region));
+		if (new == NULL) {
+			return ENOMEM;
+		}
+
+		new->base = oldas_region->base;
+		new->size = oldas_region->size;
+		new->flags = oldas_region->flags;
+		new->next = NULL;
+
+		newas_region = new;
+		newas_region = newas_region->next;
+		oldas_region = oldas_region->next;
+		}
+	}
+
+	//copy page table
+	paddr_t **new_pt = newas->page_table;
+	paddr_t **old_pt = old->page_table
+
+	if (old_pt == NULL || new_pt == NULL) {
+		panic("page tables are not initialised");
+	}
+
+	//traverse first level
+	for (int i = 0; i < PT_FL_SIZE; i++) {
+		if (old_pt[i] == NULL) {
+			new_pt[i] = NULL;
+		} else {
+			new_pt[i] = kmalloc(sizeof(paddr_t) * PT_SL_SIZE);
+			if (new_pt[i] == NULL) {
+				return ENOMEM;
+			}
+			
+			//traverse second level
+			for (int j = 0; j < PT_SL_SIZE; j++) {
+				if (old_pt[i][j] == 0) {
+					new_pt[i][j] = 0;
+				} else {
+					vaddr_t k_addr = alloc_kpages(1);
+					if (k_addr == 0) {
+						return ENOMEM;
+					}
+
+					paddr_t f_addr = KVADDR_TO_PADDR(k_addr);
+					new_pt[i][j] = f_addr;
+
+					memcpy((void *) k_addr, (void*) PADDR_TO_KVADDR(old_pt[i][j]), PAGE_SIZE);
+				}
+			}
+		}
+	}
 
 	*ret = newas;
 	return 0;
@@ -91,6 +156,34 @@ as_destroy(struct addrspace *as)
 	/*
 	 * Clean up as needed.
 	 */
+
+	if (as == NULL) {
+		return EFAULT;
+	}
+
+	if (as->region_head != NULL) {
+		struct region *cur = as->region_head;
+		struct region *next;
+		while (cur != NULL) {
+			next = cur->next;
+			kfree(cur);
+			cur = next;
+		}
+	}
+
+	if (as->page_table != NULL) {
+		for (int i = 0; i < PT_FL_SIZE; i++) {
+			if (as->page_table[i] != NULL) {
+				for (int j = 0; j < PT_SL_SIZE; j++) {
+					if (as->page_table[i][j] != 0) {
+						free_kpages(PADDR_TO_KVADDR(as->page_table[i][j]));
+					}
+				}
+			}
+			kfree(as->page_table[i]);
+		}
+		kfree(as->page_table);
+	}
 
 	kfree(as);
 }
@@ -109,9 +202,14 @@ as_activate(void)
 		return;
 	}
 
-	/*
-	 * Write this.
-	 */
+	int spl = splhigh();
+
+	for (int counter = 0; counter < NUM_TLB; counter++) {
+		tlb_write(TLBHI_INVALID(counter), TLBLO_INVALID(), counter);
+	}
+
+	splx(spl);
+
 }
 
 void
@@ -122,6 +220,14 @@ as_deactivate(void)
 	 * anything. See proc.c for an explanation of why it (might)
 	 * be needed.
 	 */
+
+	int spl = splhigh();
+
+	for (int counter = 0; counter < NUM_TLB; counter++) {
+		tlb_write(TLBHI_INVALID(counter), TLBLO_INVALID(), counter);
+	}
+
+	splx(spl);
 }
 
 /*
@@ -138,50 +244,79 @@ int
 as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize,
 		 int readable, int writeable, int executable)
 {
-	/*
-	 * Write this.
-	 */
+	if (as == NULL) {
+		return EFAULT;
+	}
 
-	(void)as;
-	(void)vaddr;
-	(void)memsize;
-	(void)readable;
-	(void)writeable;
-	(void)executable;
-	return ENOSYS; /* Unimplemented */
+	struct region *region = kmalloc(sizeof(struct region));
+	if (region == NULL) {
+		return ENOMEM;
+	}
+
+	region->base = vaddr;
+	region->size = memsize;
+
+	int flag = 0;
+	if (readable) flag = flag | FLAG_R;
+	if (writeable) flag = flag | FLAG_W;
+	if (executable) flag = flag | FLAG_X;
+
+	region->flags = flag;
+	region->next = as->region_head;
+	as->region_head = region;
+
+	return 0;
 }
 
 int
 as_prepare_load(struct addrspace *as)
 {
-	/*
-	 * Write this.
-	 */
+	if (as == NULL) {
+		return EFAULT;
+	}
 
-	(void)as;
+	struct region *cur = as->region_head;
+	while (cur != NULL) {
+		if (cur->flags == FLAG_R) {
+			cur->flags = cur->flags | FLAG_L;
+			cur->flags = cur->flags | FLAG_W;
+		}
+		cur = cur->next;
+	}
+
 	return 0;
 }
 
 int
 as_complete_load(struct addrspace *as)
 {
-	/*
-	 * Write this.
-	 */
+	if (as == NULL) {
+		return EFAULT;
+	}
 
-	(void)as;
+	struct region *cur = as->region_head;
+	while (cur != NULL) {
+		if (cur->flags & FLAG_L) {
+			cur->flags = FLAG_R;
+		}
+		cur = cur->next;
+	}
+
 	return 0;
 }
 
 int
 as_define_stack(struct addrspace *as, vaddr_t *stackptr)
 {
-	/*
-	 * Write this.
-	 */
 
-	(void)as;
+	int size = STACK_SIZE * PAGE_SIZE;
+	vaddr_t stack = USERSTACK - size;
 
+	int errno = as_define_region(as, stack, size, 1, 1, 0);
+	if (errno) {
+		return errno;
+	}
+	
 	/* Initial user-level stack pointer */
 	*stackptr = USERSTACK;
 

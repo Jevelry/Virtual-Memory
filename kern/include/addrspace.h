@@ -40,6 +40,13 @@
 
 struct vnode;
 
+struct region {
+        vaddr_t base;
+        size_t size;
+        int flags;
+        struct region *next;
+}
+
 
 /*
  * Address space - data structure associated with the virtual memory
@@ -59,8 +66,20 @@ struct addrspace {
         paddr_t as_stackpbase;
 #else
         /* Put stuff here for your VM system */
+        vaddr_t stack;
+        struct region *region_head;
+        paddr_t **page_table;
 #endif
 };
+
+#define PT_FL_SIZE 2048
+#define PT_SL_SIZE 512
+#define STACK_SIZE 16
+
+#define FLAG_L 0x8      /* Region is loading */
+#define	FLAG_R 0x4	/* Region is readable */
+#define	FLAG_W 0x2	/* Region is writable */
+#define	FLAG_X 0x1	/* Region is executable */
 
 /*
  * Functions in addrspace.c:
