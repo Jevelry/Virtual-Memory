@@ -25,9 +25,8 @@ paddr_t lookup_frame(vaddr_t page_num, struct addrspace *as){
         return 0;
     }
     return as->page_table[first_table_num][second_table_num];
-       
-    
 }
+
 int lookup_region(vaddr_t page_num, struct addrspace *as) {
     struct region *curr_region = as->region_head;
     while (curr_region != NULL) {
@@ -38,6 +37,7 @@ int lookup_region(vaddr_t page_num, struct addrspace *as) {
     }
     return -1;
 }
+
 struct region *get_region(vaddr_t page_num, struct addrspace *as) {
     struct region *curr_region = as->region_head;
         while (curr_region != NULL) {
@@ -48,6 +48,7 @@ struct region *get_region(vaddr_t page_num, struct addrspace *as) {
         }
         return NULL;
 }
+
 int insert_entry(vaddr_t page_num, paddr_t frame_num, struct addrspace *as) {
     vaddr_t first_table_num = (page_num >> 21);
     vaddr_t second_table_num = (page_num << 11) >> 23; //mask for 9 bits
@@ -61,7 +62,6 @@ int insert_entry(vaddr_t page_num, paddr_t frame_num, struct addrspace *as) {
     }
     as->page_table[first_table_num][second_table_num] = frame_num;
     return 0;
-
 }
 
 void vm_bootstrap(void)
@@ -102,7 +102,6 @@ vm_fault(int faulttype, vaddr_t faultaddress)
         }
         //Allocate Frame, Zero-fill
         vaddr_t kernal_address = alloc_kpages(1);
-        
         if (kernal_address == 0) { 
             return ENOMEM;
         }
@@ -115,27 +114,21 @@ vm_fault(int faulttype, vaddr_t faultaddress)
         }
     }
     // LOAD into TLB
-
     int spl = splhigh();
-
     // Check flags
     struct region *region = get_region(page_num, address_space);
     if (region == NULL) {
             return EFAULT;
         }
-
-    if (region->flags == FLAG_R || region->flags == FLAG_X) {
+    if (region->flags == FLAG_R || region->flags == FLAG_X || region->flags == (FLAG_X || FLAG_R)) {
         frame_address = frame_address | TLBLO_VALID;
     } else {
         frame_address = frame_address | TLBLO_VALID | TLBLO_DIRTY;
     }
-
     uint32_t entry_hi = page_num;
     uint32_t entry_lo = frame_address;
-    
     tlb_random(entry_hi, entry_lo);
     splx(spl);
-
     return 0;
 }
 
