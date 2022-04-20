@@ -13,6 +13,7 @@
 paddr_t lookup_frame(vaddr_t page_num, struct addrspace *as);
 int lookup_region(vaddr_t page_num, struct addrspace *as);
 int insert_entry(vaddr_t page_num, paddr_t frame_num, struct addrspace *as);
+struct region *get_region(vaddr_t page_num, struct addrspace *as);
 
 paddr_t lookup_frame(vaddr_t page_num, struct addrspace *as){
     vaddr_t first_table_num = (page_num >> 21);
@@ -37,7 +38,16 @@ int lookup_region(vaddr_t page_num, struct addrspace *as) {
     }
     return -1;
 }
-
+struct region *get_region(vaddr_t page_num, struct addrspace *as) {
+    struct region *curr_region = as->region_head;
+        while (curr_region != NULL) {
+            if (page_num >= curr_region->base && page_num < curr_region->base + (curr_region->size * PAGE_SIZE)) {
+                return curr_region;
+            }
+            curr_region = curr_region->next; 
+        }
+        return NULL;
+}
 int insert_entry(vaddr_t page_num, paddr_t frame_num, struct addrspace *as) {
     vaddr_t first_table_num = (page_num >> 21);
     vaddr_t second_table_num = (page_num << 11) >> 23; //mask for 9 bits
@@ -66,10 +76,6 @@ void vm_bootstrap(void)
 int
 vm_fault(int faulttype, vaddr_t faultaddress)
 {
-    (void) faulttype;
-    (void) faultaddress;
-
-
     // For Null
     if (faultaddress == 0x0){
         return EFAULT;
@@ -78,12 +84,8 @@ vm_fault(int faulttype, vaddr_t faultaddress)
     if (faulttype == VM_FAULT_READONLY){ 
         return EFAULT;
     }
-
     // Mask and remove offset portion of virtual address
-
     vaddr_t page_num = faultaddress & PAGE_FRAME;
-
-
     //Get processor's address space
     struct addrspace *address_space = proc_getas();
     if (address_space == NULL) {
@@ -100,30 +102,37 @@ vm_fault(int faulttype, vaddr_t faultaddress)
         }
         //Allocate Frame, Zero-fill
         vaddr_t kernal_address = alloc_kpages(1);
+        
         if (kernal_address == 0) { 
             return ENOMEM;
         }
-        frame_address = KVADDR_TO_PADDR(kernal_address); 
         bzero((void *)kernal_address, PAGE_SIZE);
+        frame_address = KVADDR_TO_PADDR(kernal_address); 
+        frame_address &= PAGE_FRAME; 
         res = insert_entry(page_num, frame_address, address_space);
         if (res){
             return EFAULT;
         }
     }
-
-    
-    uint32_t entry_hi;
-    uint32_t entry_lo;
     // LOAD into TLB
+
     int spl = splhigh();
+
+    // Check flags
+    struct region *region = get_region(page_num, address_space);
+    if (region == NULL) {
+            return EFAULT;
+        }
+
+    if (region->flags == FLAG_R || region->flags == FLAG_X) {
+        frame_address = frame_address | TLBLO_VALID;
+    } else {
+        frame_address = frame_address | TLBLO_VALID | TLBLO_DIRTY;
+    }
+
+    uint32_t entry_hi = page_num;
+    uint32_t entry_lo = frame_address;
     
-    // check region write permission
-    // if (curr_region->flags & FLAG_W) {
-    //     entry_lo |= TLBLO_DIRTY;
-    // }
-    entry_hi = page_num;
-    entry_lo = frame_address | TLBLO_VALID | TLBLO_DIRTY;
-    //ignore global bit and not caechable bit
     tlb_random(entry_hi, entry_lo);
     splx(spl);
 
