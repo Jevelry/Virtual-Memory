@@ -146,6 +146,8 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 		}
 	}
 
+	newas->page_table = new_pt;
+
 	*ret = newas;
 	return 0;
 }
