@@ -103,9 +103,15 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 		new->flags = oldas_region->flags;
 		new->next = NULL;
 
-		newas_region = new;
-		newas_region = newas_region->next;
-		oldas_region = oldas_region->next;
+		if (newas_region == NULL) {
+            newas->region_head = new;
+			newas_region = new;
+			oldas_region = oldas_region->next;
+        } else {
+            newas_region->next = new;
+            newas_region = newas_region->next;
+            oldas_region = oldas_region->next;
+        }
 	}
 	
 
